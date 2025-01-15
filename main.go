@@ -43,6 +43,7 @@ func main() {
 	filename := flag.String("file", "", "Markdown file to preview")
 	skipPreview := flag.Bool("s", false, "Skip auto-preview")
 	tFname := flag.String("t", "", "Alternate template name")
+	pipe := flag.Bool("pipe", false, "for use stdin")
 	flag.Parse()
 
 	dt := os.Getenv("MDP_TEMPLATE")
@@ -50,21 +51,28 @@ func main() {
 		*tFname = dt
 	}
 
-	if *filename == "" {
+	if *filename == "" && !*pipe {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	if err := run(*filename, *tFname, os.Stdout, *skipPreview); err != nil {
+	if err := run(*filename, *tFname, os.Stdout, *skipPreview, *pipe); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(filename, tFname string, out io.Writer, skipPreview bool) error {
-	input, err := os.ReadFile(filename)
-	if err != nil {
-		return err
+func run(filename, tFname string, out io.Writer, skipPreview, pipe bool) error {
+	var input io.Reader
+	var err error
+	if pipe {
+		input = os.Stdin
+	} else {
+		input, err = os.Open(filename)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	htmlData, err := parseContent(input, tFname, filename)
@@ -98,7 +106,12 @@ func run(filename, tFname string, out io.Writer, skipPreview bool) error {
 	return preview(outName)
 }
 
-func parseContent(input []byte, tFname string, filename string) ([]byte, error) {
+func parseContent(r io.Reader, tFname string, filename string) ([]byte, error) {
+	input, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
 	output := blackfriday.Run(input)
 	body := bluemonday.UGCPolicy().SanitizeBytes(output)
 
